@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.0.0
-	cloud.google.com/go/secretmanager v1.14.7
+	cloud.google.com/go/secretmanager v1.16.0
 	github.com/prometheus/client_golang v1.23.2
 	go.yaml.in/yaml/v3 v3.0.4
 )
