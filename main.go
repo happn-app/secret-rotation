@@ -41,6 +41,10 @@ func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx 
 			VersionId:  msg.Attributes["versionId"],
 			DeleteType: msg.Attributes["deleteType"],
 		}
+		if attributes.EventType != "SECRET_ROTATE" {
+			msg.Ack()
+			return
+		}
 		client, err := secretmanager.NewClient(ctx)
 		if err != nil {
 			log.Printf("Failed to create secret manager client: %v", err)

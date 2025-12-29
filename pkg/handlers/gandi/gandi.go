@@ -48,9 +48,6 @@ func (handler GandiHandler) Name() string {
 }
 
 func (handler GandiHandler) Handle(msg types.PubSubMessage) error {
-  if (msg.Attributes.EventType != "SECRET_ROTATE") {
-    return nil
-  }
   token := string(msg.Data)
   // Implement the logic to rotate Gandi API key here.
   req, err := http.NewRequestWithContext(handler.ctx, "POST", "https://api.gandi.net/v5/organization/access-tokens", nil)
