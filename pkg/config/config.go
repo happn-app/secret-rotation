@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	Host 				 string        `yaml:"host"`
 	GcpProjectId  string        `yaml:"gcp_project_id"`
   PubsubSubscription string        `yaml:"pubsub_subscription"`
   HandlerLabelKey  string        `yaml:"handler_label_key"`

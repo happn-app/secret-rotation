@@ -1,36 +1,30 @@
-# NodeGraph Generator
+# Secret Rotation
 
-A go webserver to generate a service graph for Grafana
+A go worker that handles secret rotation for different providers
 
-## NOTES
+## Config
 
-- Arc = ratio failed vs success
-- mainstat: RPS
-- secondarystat: Latency (p95)
-- detail__avg_latency: Latency (avg)
-- detail__p50_latency: Latency (p50)
-
-## TODO
-
-customize max depth + source/starting service
-
-## Development
-
-### Release
-
-Push a tag with format `vx.y.z`, and let the CI build and publish
-
-### Testing
-
-Manual testing can be done using `docker compose`, which will:
-
-- Build the `nodegraph-generator` image
-- Run a grafana server with anonymous / admin auth
-- Provision grafana with the infinity datasource connected to `nodegraph-generator`'s API
-- Provision grafana with a service graph dashboard, and make it the home dashboard
-
-For it to work, you need to port forward `vmauth` from the `monitoring` cluster
-
-```sh
-kubectl --context monitoring port-forward --namespace victoriametrics services/vmauth-vmauth-lb 8427
+```yaml
+host: :8080
+gcp_project_id: your_project
+pubsub_subscription: <id_or_subscription_name> # Can be projects/<project>/subscriptions/<name> or just <name>
+handler_label_key: <label_on_secret>
 ```
+
+The handler label key is used to fetch the right label on the secret to route to the proper handler in the secret-rotation app
+
+## Handlers
+
+### Gandi
+
+Gandi's API provides a rotation endpoint at `https://api.gandi.net/v5/organization/access-tokens` (see the [docs](https://api.gandi.net/docs/organization/#v5-organization-access-tokens))
+
+## Metrics
+
+Endpoint available on `/metrics`
+
+| **name**                           | **type**  | **labels**                     |
+| ---------------------------------- | --------- | ------------------------------ |
+| `secret_rotation_count`            | COUNTER   | handler, secret_id             |
+| `secret_rotation_duration_seconds` | HISTOGRAM | handler, secret_id             |
+| `secret_rotation_error_count`      | COUNTER   | handler, secret_id, error_type |
