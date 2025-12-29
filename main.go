@@ -85,7 +85,7 @@ func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx 
 		log.Printf("Using handler: %s for secret: %s", handler.Name(), secret.Name)
 		err = handler.Handle(pubsubMsg)
 		metrics.RotationDuration.WithLabelValues(handler.Name(), attributes.SecretId).
-    Observe(time.Since(start).Seconds())
+			Observe(time.Since(start).Seconds())
 
 		if err != nil {
 			log.Printf("Error handling message with handler %s: %v", handler.Name(), err)
