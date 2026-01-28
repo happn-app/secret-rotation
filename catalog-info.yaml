@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: secret-rotation
+  annotations:
+    github.com/project-slug: happn-app/secret-rotation
+    backstage.io/techdocs-ref: dir:.
+    jira/project-key: OPSTSK
+    jira/component: secret-rotation
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ops

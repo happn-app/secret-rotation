@@ -1,0 +1,6 @@
+site_name: secret-rotation
+docs_dir: docs
+plugins:
+  - techdocs-core
+  - search
+  - tags
