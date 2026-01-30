@@ -1,8 +1,9 @@
 ---
 name: Publish TechDocs Site
+
 on:
   workflow_dispatch:
-      inputs: {}
+    inputs: {}
   push:
     branches:
       - master
@@ -10,17 +11,76 @@ on:
       - docs/**
       - mkdocs.yml
       - .github/workflows/techdocs.yaml
+
 jobs:
   publish-techdocs-site:
-    runs-on: arc-runner-techdocs
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.2.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: '1.23'
+
+      - name: Install d2
+        run: |
+          go install oss.terrastruct.com/d2@latest
+
+      - name: Install techdocs-cli
+        run: sudo npm install -g @techdocs/cli
+
+      - name: setup java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+
+      - name: download, validate, install plantuml and its dependencies
+        run: |
+          curl -o plantuml.jar -L http://sourceforge.net/projects/plantuml/files/plantuml.1.2021.4.jar/download
+          echo "be498123d20eaea95a94b174d770ef94adfdca18  plantuml.jar" | sha1sum -c -
+          mv plantuml.jar /opt/plantuml.jar
+          mkdir -p "$HOME/.local/bin"
+          echo $'#!/bin/sh\n\njava -jar '/opt/plantuml.jar' ${@}' >> "$HOME/.local/bin/plantuml"
+          chmod +x "$HOME/.local/bin/plantuml"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          sudo apt-get install -y graphviz
+
+      - name: Install mkdocs and mkdocs plugins
+        run: |
+          python -m pip install \
+            mkdocs-techdocs-core==1.* \
+            mkdocs-d2-plugin \
+            mkdocs-mermaid2-plugin \
+            mkdocs-panzoom-plugin \
+            mkdocs-drawio-exporter \
+            mkdocs-badges \
+            mkdocs-macros-plugin \
+            mkdocs-git-revision-date-localized-plugin \
+            mkdocs-git-authors-plugin \
+            mkdocs-git-committers-plugin-2 \
+            mkdocs-toggle-sidebar-plugin \
+            git+https://github.com/jldiaz/mkdocs-plugin-tags.git \
+            mkdocs-awesome-nav \
+            mkdocs-typer2 \
+            mike
+
       - name: Generate docs site
-        run: techdocs-cli generate --no-docker --verbose
+        run: |
+          export PATH="${{ github.workspace }}/.venv/bin:$PATH"
+          techdocs-cli generate --no-docker --verbose
+
       - name: Generate Google Application Credentials
         env:
-          GCP_GITHUB_SA_CREDENTIALS: ${{ secrets.GCP_GITHUB_SA_CREDENTIALS }}
+          GCP_GITHUB_SA_CREDENTIALS: ${{ secrets.GCP_GITHUB_SA_CREDENTIALS_FOR_PUBLIC_REPOS }}
         run: |
           echo "${GCP_GITHUB_SA_CREDENTIALS}" > ./gcp-github-sa-credentials.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-github-sa-credentials.json" >> $GITHUB_ENV
@@ -31,6 +91,7 @@ jobs:
               --gcsBucketRootPath tech-docs \
               --storage-name 1e42-tools-backstage \
               --entity default/Component/secret-rotation
+
       - name: Clean up Google Application Credentials
         if: always()
         run: |
