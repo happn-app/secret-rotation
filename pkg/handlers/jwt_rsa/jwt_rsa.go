@@ -2,10 +2,7 @@ package jwt_rsa
 
 import (
 	"context"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
+	"crypto/sha1"
 	"fmt"
 	"strings"
 	"time"
@@ -16,26 +13,9 @@ import (
 	types "happn.io/secret-rotation/pkg/types"
 )
 
-func parseRSAPrivateKey(pemData []byte) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode(pemData)
-	if block == nil {
-		return nil, errors.New("failed to decode PEM block")
-	}
-
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	rsaKey, ok := key.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("not an RSA private key")
-	}
-	return rsaKey, nil
-}
-
 const (
 	PRIVATE_KEY_SECRET_NAME_LABEL = "jwt_rsa__private_key_secret_name"
+	PUBLIC_KEY_SECRET_NAME_LABEL  = "jwt_rsa__public_key_secret_name"
 	SIGNING_METHOD_LABEL             = "jwt_rsa__signing_method"
 	AUD_LABEL                     = "jwt_rsa__claims__aud"
 	SUB_LABEL                     = "jwt_rsa__claims__sub"
@@ -75,6 +55,22 @@ func (handler JwtHandler) SigningMethod() *jwt.SigningMethodRSA {
 	}
 }
 
+func (handler JwtHandler) GetPublicKeyId(publicKeySecretNameLabel string) (string, error) {
+	publicKeySecretName := handler.secret.Labels[publicKeySecretNameLabel]
+
+	publicKeyData, err := handler.client.AccessSecretVersion(handler.ctx, &secretmanagerpb.AccessSecretVersionRequest{
+		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", handler.projectId, publicKeySecretName),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	publicKeyPem := publicKeyData.Payload.Data
+	hasher := sha1.New()
+	hasher.Write(publicKeyPem)
+	return fmt.Sprintf("%x", hasher.Sum(nil))[0:8], nil
+}
+
 func (handler JwtHandler) Handle(msg types.PubSubMessage) error {
 	privateKeySecretName := handler.secret.Labels[PRIVATE_KEY_SECRET_NAME_LABEL]
 	if privateKeySecretName == "" {
@@ -86,7 +82,7 @@ func (handler JwtHandler) Handle(msg types.PubSubMessage) error {
 	if err != nil {
 		return fmt.Errorf("failed to get secret version: %v", err)
 	}
-	privateKey, err := parseRSAPrivateKey(privateKeySecretVersion.Payload.Data)
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeySecretVersion.Payload.Data)
 	if err != nil {
 		return fmt.Errorf("failed to parse RSA private key: %v", err)
 	}
@@ -126,6 +122,11 @@ func (handler JwtHandler) Handle(msg types.PubSubMessage) error {
 	for key, value := range extraClaims {
 		token.Claims.(jwt.MapClaims)[key] = value
 	}
+	kid, err := handler.GetPublicKeyId(PUBLIC_KEY_SECRET_NAME_LABEL)
+	if err != nil {
+		return fmt.Errorf("failed to get public key ID: %v", err)
+	}
+	token.Header["kid"] = kid
 	tokenString, err := token.SignedString(privateKey)
 	if err != nil {
 		return fmt.Errorf("failed to sign JWT: %v", err)
