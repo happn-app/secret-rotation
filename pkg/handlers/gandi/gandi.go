@@ -33,13 +33,15 @@ type GandiHandler struct {
   ctx   context.Context
   client *secretmanager.Client
   secret *secretmanagerpb.Secret
+	projectId string
 }
 
-func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret) GandiHandler {
+func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, projectId string) GandiHandler {
   return GandiHandler{
     ctx:   ctx,
     client: client,
     secret: secret,
+		projectId: projectId,
   }
 }
 

@@ -16,15 +16,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"happn.io/secret-rotation/pkg/config"
 	"happn.io/secret-rotation/pkg/handlers/gandi"
+	"happn.io/secret-rotation/pkg/handlers/jwt_rsa"
+	"happn.io/secret-rotation/pkg/handlers/rsa"
 	"happn.io/secret-rotation/pkg/http_handler"
 	"happn.io/secret-rotation/pkg/metrics"
 	"happn.io/secret-rotation/pkg/types"
 )
 
-func GetHandlerByName(name string, ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret) (types.SecretRotationHandler, error) {
+func GetHandlerByName(name string, ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, projectId string) (types.SecretRotationHandler, error) {
 	switch name {
 	case "gandi":
-		return gandi.New(ctx, client, secret), nil
+		return gandi.New(ctx, client, secret, projectId), nil
+	case "jwt_rsa":
+		return jwt_rsa.New(ctx, client, secret, projectId), nil
+	case "rsa":
+		return rsa.New(ctx, client, secret, projectId), nil
 	default:
 		return nil, errors.New("unknown handler: " + name)
 	}
@@ -75,7 +81,7 @@ func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx 
 			msg.Nack()
 			return
 		}
-		handler, err := GetHandlerByName(handlerName, ctx, client, secret)
+		handler, err := GetHandlerByName(handlerName, ctx, client, secret, cfg.GcpProjectId)
 		if err != nil {
 			log.Printf("Failed to get handler: %v", err)
 			metrics.RotationErrorCount.WithLabelValues("handler_fetch_error", attributes.SecretId, handlerName).Inc()
