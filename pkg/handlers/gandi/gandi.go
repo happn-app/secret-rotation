@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	"happn.io/secret-rotation/pkg/config"
 	"happn.io/secret-rotation/pkg/types"
 )
 
@@ -34,14 +37,21 @@ type GandiHandler struct {
   client *secretmanager.Client
   secret *secretmanagerpb.Secret
 	projectId string
+	logger *slog.Logger
 }
 
-func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, projectId string) GandiHandler {
+func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, cfg config.Config) GandiHandler {
   return GandiHandler{
     ctx:   ctx,
     client: client,
     secret: secret,
-		projectId: projectId,
+		projectId: cfg.GcpProjectId,
+		logger: slog.New(slog.NewJSONHandler(
+			os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel},
+		)).With(
+			"component", "secret_handler",
+			"handler", "gandi",
+		),
   }
 }
 
@@ -51,9 +61,10 @@ func (handler GandiHandler) Name() string {
 
 func (handler GandiHandler) Handle(msg types.PubSubMessage) error {
   token := string(msg.Data)
-  // Implement the logic to rotate Gandi API key here.
+	handler.logger.InfoContext(handler.ctx, "Performing POST request to Gandi API (https://api.gandi.net/v5/organization/access-tokens)")
   req, err := http.NewRequestWithContext(handler.ctx, "POST", "https://api.gandi.net/v5/organization/access-tokens", nil)
   if err != nil {
+		handler.logger.ErrorContext(handler.ctx, "Failed to create HTTP request", "error", err)
     return err
   }
   // Add necessary headers and authentication to the request.
@@ -67,6 +78,7 @@ func (handler GandiHandler) Handle(msg types.PubSubMessage) error {
   var body GandiResponseBody
   err = json.NewDecoder(resp.Body).Decode(&body)
   if err != nil {
+    handler.logger.ErrorContext(handler.ctx, "Failed to decode HTTP response", "error", err)
     return err
   }
 
@@ -78,6 +90,7 @@ func (handler GandiHandler) Handle(msg types.PubSubMessage) error {
     },
   })
   if err != nil {
+		handler.logger.ErrorContext(handler.ctx, "Failed to add new secret version", "error", err)
     return err
   }
   return nil

@@ -34,6 +34,7 @@ builds:
   - main: .
     env:
       - CGO_ENABLED=0
+      - GOEXPERIMENT=jsonv2
     goos:
       - linux
     goarch:

@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"cloud.google.com/go/pubsub/v2"
@@ -16,21 +17,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"happn.io/secret-rotation/pkg/config"
 	"happn.io/secret-rotation/pkg/handlers/gandi"
-	"happn.io/secret-rotation/pkg/handlers/jwt_rsa"
-	"happn.io/secret-rotation/pkg/handlers/rsa"
+	"happn.io/secret-rotation/pkg/handlers/jwk"
+	"happn.io/secret-rotation/pkg/handlers/jwt"
 	"happn.io/secret-rotation/pkg/http_handler"
 	"happn.io/secret-rotation/pkg/metrics"
 	"happn.io/secret-rotation/pkg/types"
 )
 
-func GetHandlerByName(name string, ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, projectId string) (types.SecretRotationHandler, error) {
+func GetHandlerByName(ctx context.Context, name string, client *secretmanager.Client, secret *secretmanagerpb.Secret, cfg config.Config) (types.SecretRotationHandler, error) {
 	switch name {
 	case "gandi":
-		return gandi.New(ctx, client, secret, projectId), nil
-	case "jwt_rsa":
-		return jwt_rsa.New(ctx, client, secret, projectId), nil
-	case "rsa":
-		return rsa.New(ctx, client, secret, projectId), nil
+		return gandi.New(ctx, client, secret, cfg), nil
+	case "jwt":
+		return jwt.New(ctx, client, secret, cfg), nil
+	case "jwk":
+		return jwk.New(ctx, client, secret, cfg), nil
 	default:
 		return nil, errors.New("unknown handler: " + name)
 	}
@@ -38,6 +39,7 @@ func GetHandlerByName(name string, ctx context.Context, client *secretmanager.Cl
 
 func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx context.Context, msg *pubsub.Message) {
 	return func(ctx context.Context, msg *pubsub.Message) {
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 		start := time.Now()
 		attributes := types.PubSubAttributes{
 			SecretId:   msg.Attributes["secretId"],
@@ -53,7 +55,7 @@ func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx 
 		}
 		client, err := secretmanager.NewClient(ctx)
 		if err != nil {
-			log.Printf("Failed to create secret manager client: %v", err)
+			logger.With("component", "secretmanager").ErrorContext(ctx, "Failed to create secret manager client", "error", err)
 			metrics.RotationErrorCount.WithLabelValues("secret_manager_client_creation_error", attributes.SecretId, "").Inc()
 			msg.Nack()
 			return
@@ -63,53 +65,53 @@ func HandleMessageFactory(cfg config.Config, metrics *metrics.Metrics) func(ctx 
 			Attributes: attributes,
 			Data:       msg.Data,
 		}
-		log.Printf("Received message for secret: %s, event type: %s", attributes.SecretId, attributes.EventType)
+		logger.With("component", "pubsub").InfoContext(ctx, "Received message for secret: %s, event type: %s", attributes.SecretId, attributes.EventType)
 		secret, err := client.GetSecret(ctx, &secretmanagerpb.GetSecretRequest{
 			Name: attributes.SecretId,
 		})
 		if err != nil {
-			log.Printf("Failed to get secret: %v", err)
+			logger.With("component", "secretmanager").ErrorContext(ctx, "Failed to get secret", "error", err)
 			metrics.RotationErrorCount.WithLabelValues("secret_fetch_error", attributes.SecretId, "").Inc()
 			msg.Nack()
 			return
 		}
-		log.Printf("Fetched secret: %s", secret.Name)
+		logger.With("component", "secretmanager").InfoContext(ctx, "Fetched secret", "secret_name", secret.Name)
 		handlerName := secret.Labels[cfg.HandlerLabelKey]
 		if handlerName == "" {
-			log.Printf("No handler label found for secret: %s", secret.Name)
+			logger.With("component", "secretmanager").ErrorContext(ctx, "No handler label found for secret", "secret_name", secret.Name)
 			metrics.RotationErrorCount.WithLabelValues("missing_handler_label", attributes.SecretId, "").Inc()
 			msg.Nack()
 			return
 		}
-		handler, err := GetHandlerByName(handlerName, ctx, client, secret, cfg.GcpProjectId)
+		handler, err := GetHandlerByName(ctx, handlerName, client, secret, cfg)
 		if err != nil {
-			log.Printf("Failed to get handler: %v", err)
+			logger.With("component", "secretmanager").ErrorContext(ctx, "Failed to get handler", "error", err)
 			metrics.RotationErrorCount.WithLabelValues("handler_fetch_error", attributes.SecretId, handlerName).Inc()
 			msg.Nack()
 			return
 		}
-		log.Printf("Using handler: %s for secret: %s", handler.Name(), secret.Name)
+		logger.With("component", "secretmanager").InfoContext(ctx, "Using handler", "handler_name", handler.Name(), "secret_name", secret.Name)
 		err = handler.Handle(pubsubMsg)
 		metrics.RotationDuration.WithLabelValues(handler.Name(), attributes.SecretId).
 			Observe(time.Since(start).Seconds())
 
 		if err != nil {
-			log.Printf("Error handling message with handler %s: %v", handler.Name(), err)
+			logger.With("component", "secretmanager").ErrorContext(ctx, "Error handling message with handler", "handler_name", handler.Name(), "error", err)
 			metrics.RotationErrorCount.WithLabelValues("handler_execution_error", attributes.SecretId, handler.Name()).Inc()
 			msg.Nack()
 			return
 		}
 		metrics.RotationCount.WithLabelValues(handler.Name(), attributes.SecretId).Inc()
-		log.Printf("Successfully handled message with handler %s", handler.Name())
+		logger.With("component", "secretmanager").InfoContext(ctx, "Successfully handled message with handler", "handler_name", handler.Name())
 		msg.Ack()
 	}
 }
 
 func main() {
-	cfg := config.LoadConfig()
 	ctx := context.Background()
+	cfg := config.LoadConfig(ctx)
 	reg := prometheus.NewRegistry()
-
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	// Add go runtime metrics and process collectors.
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -125,20 +127,20 @@ func main() {
 	mux.HandleFunc("/healthz", http_handler.HealthHandler)
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
-	log.Printf("listening on %s", cfg.Host)
+	logger.With("component", "http").InfoContext(ctx, "listening on", "host", cfg.Host)
 	go func() {
 		if err := http.ListenAndServe(cfg.Host, mux); err != nil {
-			log.Fatalf("server exited: %v", err)
+			logger.With("component", "http").ErrorContext(ctx, "server exited", "error", err)
 		}
 	}()
 
 	client, err := pubsub.NewClient(ctx, cfg.GcpProjectId)
 	if err != nil {
-		log.Fatalf("Could not instantiate pubsub client: %s", err)
+		logger.With("component", "pubsub").ErrorContext(ctx, "Could not instantiate pubsub client", "error", err)
 	}
 	sub := client.Subscriber(cfg.PubsubSubscription)
 	err = sub.Receive(ctx, HandleMessageFactory(cfg, metrics))
 	if err != nil && !errors.Is(err, context.Canceled) {
-		log.Fatalf("Error receiving messages: %s", err)
+		logger.With("component", "pubsub").ErrorContext(ctx, "Error receiving messages", "error", err)
 	}
 }
