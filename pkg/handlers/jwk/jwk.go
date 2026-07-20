@@ -22,18 +22,18 @@ import (
 )
 
 type JWKHandler struct {
-	ctx context.Context
-	client *secretmanager.Client
-	secret *secretmanagerpb.Secret
+	ctx       context.Context
+	client    *secretmanager.Client
+	secret    *secretmanagerpb.Secret
 	projectId string
-	logger *slog.Logger
+	logger    *slog.Logger
 }
 
 func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, cfg config.Config) JWKHandler {
 	return JWKHandler{
-		ctx:   ctx,
-		client: client,
-		secret: secret,
+		ctx:       ctx,
+		client:    client,
+		secret:    secret,
 		projectId: cfg.GcpProjectId,
 		logger: slog.New(slog.NewJSONHandler(
 			os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel},
@@ -122,30 +122,29 @@ func (handler JWKHandler) NewRSASSAJWK(algorithm string, keyBits int) (jwk.Key, 
 
 func (handler JWKHandler) GetNewJwk(algorithm string, keyBits int) (jwk.Key, error) {
 	switch algorithm {
-		case "RS256":
-		case "RS384":
-		case "RS512":
-			return handler.NewRSAJWK(algorithm, keyBits)
-		case "ES256":
-		case "ES384":
-		case "ES512":
-			return handler.NewECDSAJWK(algorithm, keyBits)
-		case "HS256":
-		case "HS384":
-		case "HS512":
-			return handler.NewOctJWK(algorithm, keyBits)
-		case "EdDSA":
-			return handler.NewEd25519JWK(algorithm, keyBits)
-		case "PS256":
-		case "PS384":
-		case "PS512":
-			return handler.NewRSASSAJWK(algorithm, keyBits)
-		default:
-			return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
+	case "RS256":
+	case "RS384":
+	case "RS512":
+		return handler.NewRSAJWK(algorithm, keyBits)
+	case "ES256":
+	case "ES384":
+	case "ES512":
+		return handler.NewECDSAJWK(algorithm, keyBits)
+	case "HS256":
+	case "HS384":
+	case "HS512":
+		return handler.NewOctJWK(algorithm, keyBits)
+	case "EdDSA":
+		return handler.NewEd25519JWK(algorithm, keyBits)
+	case "PS256":
+	case "PS384":
+	case "PS512":
+		return handler.NewRSASSAJWK(algorithm, keyBits)
+	default:
+		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
 	}
 	return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
 }
-
 
 func (handler JWKHandler) Handle(msg types.PubSubMessage) error {
 	jwkSet, err := jwk.Parse(msg.Data)

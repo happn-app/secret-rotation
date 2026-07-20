@@ -9,8 +9,8 @@ import (
 )
 
 type Metrics struct {
-	RotationCount    *prometheus.CounterVec
-	RotationDuration *prometheus.HistogramVec
+	RotationCount      *prometheus.CounterVec
+	RotationDuration   *prometheus.HistogramVec
 	RotationErrorCount *prometheus.CounterVec
 }
 

@@ -19,30 +19,30 @@ import (
 )
 
 const (
-	JWK_SECRET_NAME_LABEL = "jwt_rsa__jwk_secret_name"
+	JWK_SECRET_NAME_LABEL = "jwk_secret_name"
 )
 
 type JwtHandler struct {
-  ctx   context.Context
-  client *secretmanager.Client
-  secret *secretmanagerpb.Secret
+	ctx       context.Context
+	client    *secretmanager.Client
+	secret    *secretmanagerpb.Secret
 	projectId string
-	logger *slog.Logger
+	logger    *slog.Logger
 }
 
 func New(ctx context.Context, client *secretmanager.Client, secret *secretmanagerpb.Secret, cfg config.Config) JwtHandler {
-  return JwtHandler{
-    ctx:   ctx,
-    client: client,
-    secret: secret,
+	return JwtHandler{
+		ctx:       ctx,
+		client:    client,
+		secret:    secret,
 		projectId: cfg.GcpProjectId,
-		logger : slog.New(slog.NewJSONHandler(
+		logger: slog.New(slog.NewJSONHandler(
 			os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel},
 		)).With(
 			"component", "secret_handler",
 			"handler", "jwt",
 		),
-  }
+	}
 }
 
 func (handler JwtHandler) Name() string {
