@@ -19,6 +19,7 @@ import (
 	"happn.io/secret-rotation/pkg/handlers/gandi"
 	"happn.io/secret-rotation/pkg/handlers/jwk"
 	"happn.io/secret-rotation/pkg/handlers/jwt"
+	"happn.io/secret-rotation/pkg/handlers/password"
 	"happn.io/secret-rotation/pkg/http_handler"
 	"happn.io/secret-rotation/pkg/metrics"
 	"happn.io/secret-rotation/pkg/types"
@@ -32,6 +33,8 @@ func GetHandlerByName(ctx context.Context, name string, client *secretmanager.Cl
 		return jwt.New(ctx, client, secret, cfg), nil
 	case "jwk":
 		return jwk.New(ctx, client, secret, cfg), nil
+	case "password":
+		return password.New(ctx, client, secret, cfg), nil
 	default:
 		return nil, errors.New("unknown handler: " + name)
 	}

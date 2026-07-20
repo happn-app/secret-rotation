@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lestrrat-go/jwx/v4 v4.1.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/sethvargo/go-password v0.4.0
 	go.yaml.in/yaml/v3 v3.0.4
 )
 
