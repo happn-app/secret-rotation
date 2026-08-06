@@ -38,7 +38,7 @@ jobs:
         run: sudo npm install -g @techdocs/cli
 
       - name: setup java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '11'
